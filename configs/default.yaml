@@ -1,0 +1,27 @@
+port: 8080
+secret: xyz123
+data_folder: ./data
+credentials:
+  capital:
+    username: 123
+    api_key: 123 
+    password: 123
+  ig:
+    api_key: 345
+    account_id: 678
+    username: 123
+    password: 432
+epics:
+  capital:
+    - TSLA
+    - EURUSD
+  ig:
+    - CS.D.CRYPTOB10.CFD.IP  # Crypto 10 Index
+    - CS.D.BCHUSD.CFD.IP  # BTC Cash
+    - CS.D.UNIUSD.CFD.IP  # UniSwap
+    - CC.D.RB.UMP.IP # US Petroleum
+    - CC.D.HO.UMP.IP # US Heating Oil
+    - CC.D.CL.UMP.IP  # US Oil
+    - CS.D.AUDGBP.MINI.IP  # AUD/GBP Mini
+    - IX.D.DAX.IFS.IP  # DAX Germany 40
+    - IX.D.SUNNAS.IFS.IP  # US Tech 100 Weekend
