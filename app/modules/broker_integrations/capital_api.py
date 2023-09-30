@@ -3,11 +3,18 @@ Contains the integration classes and functions for the Capital.com API
 """
 
 import json
+import logging
 from types import MappingProxyType
 from base64 import b64encode, b64decode
+
+import aiohttp
 import requests
 from Crypto.PublicKey import RSA
 from Crypto.Cipher import PKCS1_v1_5
+from cachetools import TTLCache
+
+cache = TTLCache(maxsize=10, ttl=600)  # Time limited cache for access token
+store = {}  # Share token store across all instances of CapitalClient
 
 
 class CapitalAPIException(Exception):
@@ -25,7 +32,7 @@ class CapitalAPIException(Exception):
         self.response = response
         self.request = getattr(response, "request", None)
 
-    def __str__(self):  # pragma: no cover
+    def __str__(self):
         return f"APIError(status code={self.status_code}) || Capital.com Error: {self.code}"
 
 
@@ -38,11 +45,153 @@ def encrypt_password(password, key):
     return ciphertext
 
 
-class Client:
+class CapitalClientAsync:
+    def __init__(self, username, api_key, password, demo=False):
+        """Initialise client object with credentials and live/dev endpoint."""
+        self.username = username
+        self.api_key = api_key
+        self.password = password
+        self.log = logging.getLogger('IgAPI')
+
+        if demo is False:
+            self.server = "https://api-capital.backend-capital.com"
+        else:
+            self.server = "https://demo-api-capital.backend-capital.com"
+
+    async def __auth_request(self, method, path, **kwargs):
+        """Wrapper method for making authenticated API requests."""
+        headers = await self.__headers()
+        if 'headers' in kwargs:
+            headers.update(kwargs['headers'])
+            del kwargs['headers']
+
+        async with aiohttp.ClientSession() as session:
+            async with session.request(method, self.server + path, headers=headers, **kwargs) as resp:
+                try:
+                    return await resp.json()
+                except:
+                    self.log.error(await resp.text())
+                    raise
+
+    async def __make_request(self, method, path, **kwargs):
+        """Wrapper method for making API requests, returns both response and response headers."""
+        async with aiohttp.ClientSession() as session:
+            async with session.request(method, self.server + path, **kwargs) as resp:
+                try:
+                    return resp.headers, await resp.json()
+                except:
+                    self.log.error(await resp.text())
+                    raise
+
+    async def __token(self):
+        """Create a session using the stored credentials."""
+        if 'access_token' in cache:
+            return cache['access_token']
+
+        encryption_key, timestamp = await self.__get_encryption_key()
+        string_encrypt = f"{self.password}|{timestamp}"
+        encrypted_password = str(encrypt_password(string_encrypt, encryption_key), "utf-8")
+        body = {
+            "identifier": self.username,
+            "password": encrypted_password,
+            "encryptedPassword": True,
+        }
+        headers, _ = await self.__make_request("POST", "/api/v1/session", json=body, headers={
+            "X-CAP-API-KEY": self.api_key,
+            "content-type": "application/json",
+        })
+        cache['access_token'] = (headers["X-SECURITY-TOKEN"], headers["CST"])
+
+        return cache['access_token']
+
+    async def __headers(self):
+        """Returns headers with auth token."""
+        token, cst = await self.__token()
+
+        return {
+            "X-SECURITY-TOKEN": token,
+            "CST": cst,
+            "content-type": "application/json",
+        }
+
+    async def __get_encryption_key(self):
+        """Request encryption key from API."""
+        _, data = await self.__make_request("GET", "/api/v1/session/encryptionKey", headers={
+            "X-CAP-API-KEY": self.api_key,
+            "content-type": "application/json",
+        })
+
+        return data["encryptionKey"], data["timeStamp"]
+
+    async def __confirmation(self, deal_reference):
+        """Get deal confirmation object from API."""
+        url = f"/api/v1/confirms/{deal_reference}"
+        return self.__auth_request("GET", url)
+
+    async def all_accounts(self):
+        """List accounts under this API key."""
+        return (await self.__auth_request("GET", "/api/v1/accounts"))['accounts']
+
+    async def open_position(
+            self,
+            epic,
+            direction,
+            size,
+            guaranteed_stop=False,
+            trailing_stop=False,
+            stop_level=None,
+            stop_distance=None,
+            stop_amount=None,
+            profit_level=None,
+            profit_distance=None,
+            profit_amount=None,
+    ):
+        """Open a new position."""
+        data = {
+            "epic": epic,
+            "direction": direction.upper(),
+            "size": str(size),
+            "guaranteedStop": guaranteed_stop,
+            "trailingStop": trailing_stop,
+        }
+        if stop_level is not None:
+            data.update({"stopLevel": stop_level})
+        if stop_distance is not None:
+            data.update({"stopDistance": stop_distance})
+        if stop_amount is not None:
+            data.update({"stopAmount": stop_amount})
+        if profit_level is not None:
+            data.update({"profitLevel": profit_level})
+        if profit_distance is not None:
+            data.update({"profitDistance": profit_distance})
+        if profit_amount is not None:
+            data.update({"profitAmount": profit_amount})
+
+        data = await self.__auth_request("post", "/api/v1/positions", json=data)
+        final_data = await self.__confirmation(data["dealReference"])
+        return final_data
+
+    async def close_position(self, deal_id):
+        """Close a position using the deal_id."""
+        url = f"{self.server}/api/v1/positions/{deal_id}"
+        data = await self.__auth_request("DELETE", url)
+        final_data = await self.__confirmation(data["dealReference"])
+        return final_data
+
+    async def prices(self, epic, resolution="MINUTE", limit=10):
+        """Returns historical prices for a particular instrument"""
+        url = f"/api/v1/prices/{epic}?resolution={resolution}&max={limit}"
+        data = await self.__auth_request("GET", url)
+        return data
+
+    async def search_instruments(self, search_term):
+        """Returns the details of the given markets."""
+        data = await self.__auth_request("GET", f"/api/v1/markets?searchTerm={search_term}")
+        return data
+
+
+class CapitalClient:
     """Capital.com REST API client class."""
-    x_token: str
-    cst: str
-    enc_key: list
 
     def __init__(self, username, api_key, password, demo=False):
         """Initialise client object with credentials and live/dev endpoint."""
@@ -58,13 +207,13 @@ class Client:
         else:
             self.server = "https://demo-api-capital.backend-capital.com"
 
-    def __get_encryption_key__(self):
+    def __get_encryption_key(self):
         """Request encryption key from API and store it with the current timestamp in a class variable."""
         url = f"{self.server}/api/v1/session/encryptionKey"
-        data = self._make_request("get", url, "")[0]
-        self.enc_key = [data["encryptionKey"], data["timeStamp"]]
+        data = self.__make_request("get", url, "")[0]
+        return data["encryptionKey"], data["timeStamp"]
 
-    def _make_request(self, method: str, url: str, payload: str):
+    def __make_request(self, method: str, url: str, payload: str):
         """Wrapper function for making requests to the REST API."""
         if method == "post":
             response = requests.post(url, headers=self.headers, data=payload, timeout=30)
@@ -77,19 +226,17 @@ class Client:
         else:
             raise ValueError(f'Unsupported method: {method}')
 
-        if not (200 <= response.status_code < 300):
+        if not 200 <= response.status_code < 300:
             raise CapitalAPIException(response, response.status_code, response.text)
 
         return json.loads(response.text), response.headers
 
     def __create_session(self):
         """Create a session using the stored credentials."""
-        self.__get_encryption_key__()
+        encryption_key, timestamp = self.__get_encryption_key()
         url = f"{self.server}/api/v1/session"
-        string_encrypt = f"{self.password}|{self.enc_key[1]}"
-        encrypted_password = str(
-            encrypt_password(string_encrypt, self.enc_key[0]), "utf-8"
-        )
+        string_encrypt = f"{self.password}|{timestamp}"
+        encrypted_password = str(encrypt_password(string_encrypt, encryption_key), "utf-8")
         payload = json.dumps(
             {
                 "identifier": self.username,
@@ -97,25 +244,23 @@ class Client:
                 "encryptedPassword": True,
             }
         )
-        data = self._make_request("post", url, payload)[1]
-        self.cst = data["CST"]
-        self.x_token = data["X-SECURITY-TOKEN"]
+        data = self.__make_request("post", url, payload)[1]
         self.headers = {
-            "X-SECURITY-TOKEN": self.x_token,
-            "CST": self.cst,
+            "X-SECURITY-TOKEN": data["X-SECURITY-TOKEN"],
+            "CST": data["CST"],
             "content-type": "application/json",
         }
 
     def __confirmation(self, deal_reference):
         """Get deal confirmation object from API."""
         url = f"{self.server}/api/v1/confirms/{deal_reference}"
-        return self._make_request("get", url, payload="")[0]
+        return self.__make_request("get", url, payload="")[0]
 
     def all_accounts(self):
         """List accounts under this API key."""
         self.__create_session()
         url = f"{self.server}/api/v1/accounts"
-        data = self._make_request("get", url, payload="")[0]
+        data = self.__make_request("get", url, payload="")[0]
         self.__log_out()
         return data
 
@@ -123,7 +268,7 @@ class Client:
         """Returns account preferences, i.e. leverage settings and trading mode."""
         self.__create_session()
         url = f"{self.server}/api/v1/accounts/preferences"
-        data = self._make_request("get", url, payload="")[0]
+        data = self.__make_request("get", url, payload="")[0]
         self.__log_out()
         return data
 
@@ -144,7 +289,7 @@ class Client:
         }
         payload = json.dumps(data)
         url = f"{self.server}/api/v1/accounts/preferences"
-        data = self._make_request("put", url, payload=payload)[0]
+        data = self.__make_request("put", url, payload=payload)[0]
         self.__log_out()
         return data
 
@@ -153,7 +298,7 @@ class Client:
         self.__create_session()
         url = f"{self.server}/api/v1/session"
         payload = json.dumps({"accountId": account_id})
-        data = self._make_request("put", url, payload=payload)[0]
+        data = self.__make_request("put", url, payload=payload)[0]
         self.__log_out()
         return data
 
@@ -161,9 +306,9 @@ class Client:
         """Request a list of all open positions from the API."""
         self.__create_session()
         url = f"{self.server}/api/v1/positions"
-        data = self._make_request("get", url, payload="")[0]
+        data = self.__make_request("get", url, payload="")[0]
         self.__log_out()
-        return data
+        return data['positions']
 
     def open_position(
             self,
@@ -202,7 +347,7 @@ class Client:
         if profit_amount is not None:
             data.update({"profitAmount": profit_amount})
         payload = json.dumps(data)
-        data = self._make_request("post", url, payload=payload)[0]
+        data = self.__make_request("post", url, payload=payload)[0]
         final_data = self.__confirmation(data["dealReference"])
         self.__log_out()
         return final_data
@@ -212,7 +357,7 @@ class Client:
 
         self.__create_session()
         url = f"{self.server}/api/v1/positions/{deal_id}"
-        data = self._make_request("delete", url, payload="")[0]
+        data = self.__make_request("delete", url, payload="")[0]
         final_data = self.__confirmation(data["dealReference"])
         self.__log_out()
         return final_data
@@ -246,7 +391,7 @@ class Client:
         payload = json.dumps(data)
         self.__create_session()
         url = f"{self.server}/api/v1/positions/{deal_id}"
-        data = self._make_request("put", url, payload=payload)[0]
+        data = self.__make_request("put", url, payload=payload)[0]
         final_data = self.__confirmation(data["dealReference"])
         self.__log_out()
         return final_data
@@ -255,7 +400,7 @@ class Client:
         """List all working orders."""
         self.__create_session()
         url = f"{self.server}/api/v1/workingorders"
-        data = self._make_request("get", url, payload="")[0]
+        data = self.__make_request("get", url, payload="")[0]
         self.__log_out()
         return data
 
@@ -300,7 +445,7 @@ class Client:
         if profit_amount is not None:
             data.update({"profitAmount": profit_amount})
         payload = json.dumps(data)
-        data = self._make_request("post", url, payload=payload)[0]
+        data = self.__make_request("post", url, payload=payload)[0]
         final_data = self.__confirmation(data["dealReference"])
         self.__log_out()
         return final_data
@@ -339,7 +484,7 @@ class Client:
         payload = json.dumps(data)
         self.__create_session()
         url = f"{self.server}/api/v1/workingorders/{deal_id}"
-        data = self._make_request("put", url, payload=payload)[0]
+        data = self.__make_request("put", url, payload=payload)[0]
         final_data = self.__confirmation(data["dealReference"])
         self.__log_out()
         return final_data
@@ -348,7 +493,7 @@ class Client:
         """Delete a working order by deal_id."""
         self.__create_session()
         url = f"{self.server}/api/v1/workingorders/{deal_id}"
-        data = self._make_request("delete", url, payload="")[0]
+        data = self.__make_request("delete", url, payload="")[0]
         final_data = self.__confirmation(data["dealReference"])
         self.__log_out()
         return final_data
@@ -357,7 +502,7 @@ class Client:
         """Returns all top-level nodes (market categories) in the market navigation hierarchy."""
         self.__create_session()
         url = f"{self.server}/api/v1/marketnavigation"
-        data = self._make_request("get", url, payload="")
+        data = self.__make_request("get", url, payload="")
         self.__log_out()
         return data
 
@@ -365,7 +510,7 @@ class Client:
         """Returns all sub-nodes (markets) of the given node (market category) in the market navigation hierarchy."""
         self.__create_session()
         url = f"{self.server}/api/v1/marketnavigation/{node_id}?limit=500"
-        data = self._make_request("get", url, payload="")
+        data = self.__make_request("get", url, payload="")
         self.__log_out()
         return data
 
@@ -373,7 +518,7 @@ class Client:
         """Returns the details of the given markets."""
         self.__create_session()
         url = f"{self.server}/api/v1/markets?searchTerm={market}"
-        data = self._make_request("get", url, payload="")
+        data = self.__make_request("get", url, payload="")
         self.__log_out()
         return data
 
@@ -381,7 +526,7 @@ class Client:
         """Returns the details of the given market."""
         self.__create_session()
         url = f"{self.server}/api/v1/markets/{epic}"
-        data = self._make_request("get", url, payload="")
+        data = self.__make_request("get", url, payload="")
         self.__log_out()
         return data
 
@@ -389,7 +534,7 @@ class Client:
         """Returns historical prices for a particular instrument"""
         self.__create_session()
         url = f"{self.server}/api/v1/prices/{epic}?resolution={resolution}&max={limit}"
-        data = self._make_request("get", url, payload="")
+        data = self.__make_request("get", url, payload="")
         self.__log_out()
         return data
 
@@ -397,7 +542,7 @@ class Client:
         """Client sentiment for market"""
         self.__create_session()
         url = f"{self.server}/api/v1/clientsentiment/{market_id}"
-        data = self._make_request("get", url, payload="")
+        data = self.__make_request("get", url, payload="")
         self.__log_out()
         return data
 

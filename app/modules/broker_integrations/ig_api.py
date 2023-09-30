@@ -53,12 +53,16 @@ def parse_ig_point(point):
 class IgAPI:
     """Class containing methods for interacting with the IG REST API."""
 
-    def __init__(self, api_key, account_id, username, password):
+    def __init__(self, api_key, account_id, username, password, demo=True):
         self.api_key = api_key
         self.username = username
         self.password = password
         self.account_id = account_id
-        self.url = "https://demo-api.ig.com/gateway/deal"
+        if demo:
+            self.url = "https://demo-api.ig.com/gateway/deal"
+        else:
+            self.url = "https://api.ig.com/gateway/deal"
+
         self.log = logging.getLogger('IgAPI')
 
     async def __token(self):
@@ -83,10 +87,10 @@ class IgAPI:
             'Content-Type': 'application/json'
         }
 
-        # TODO: this should be async
-        response = requests.request("POST", url, headers=headers, data=payload, timeout=10)
+        async with aiohttp.ClientSession() as session:
+            async with session.request("POST", url, headers=headers, data=payload) as resp:
+                resp = await resp.json()
 
-        resp = response.json()
         store['refresh_token'] = resp['oauthToken']['refresh_token']
         cache['access_token'] = resp['oauthToken']['access_token']
 
@@ -110,6 +114,8 @@ class IgAPI:
 
         async with aiohttp.ClientSession() as session:
             async with session.request(method, self.url + path, headers=headers, **kwargs) as resp:
+                if not 200 <= resp.status < 300:
+                    raise Exception(f'Status Code: {resp.status} \n {await resp.text()}')
                 try:
                     return await resp.json()
                 except:
@@ -172,10 +178,10 @@ class IgAPI:
         """Get historical data for an instrument."""
         resp = await self.__make_request(3, "GET", f'/prices/{epic}',
                                          params={'resolution': resolution,
-                                               'from': start + "T00:00:00",
-                                               'to': end + "T00:00:00",
-                                               'max': max_values,
-                                               'pageSize': 0})
+                                                 'from': start + "T00:00:00",
+                                                 'to': end + "T00:00:00",
+                                                 'max': max_values,
+                                                 'pageSize': 0})
 
         if 'prices' not in resp or len(resp['prices']) == 0:
             return
