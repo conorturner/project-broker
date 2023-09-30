@@ -4,7 +4,7 @@ from app.modules import config
 
 class ConfigTestCase(unittest.TestCase):
     def test_read_config(self):
-        cfg = config.read_config('../configs/default.yaml')
+        cfg = config.read_config('./configs/default.yaml')
         for k in ['port', 'secret', 'credentials', 'epics']:
             self.assertIn(k, cfg, msg=f'Config should contain a key for "{k}"')
 

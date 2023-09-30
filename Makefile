@@ -10,3 +10,10 @@ install:
 
 lint:
 	pylint -j 8 app/
+
+test:
+	python -m unittest discover tests/
+
+cover:
+	coverage run -m unittest discover tests/
+	coverage report -m
