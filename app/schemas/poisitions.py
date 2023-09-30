@@ -1,18 +1,23 @@
+"""Schemas for positions API routes."""
+
 from enum import Enum
 from pydantic import BaseModel, Field
 
 
 class BrokerEnum(str, Enum):
-    ig = 'IG'
-    capital = 'CAPITAL'
+    """Enumeration of current supported brokers."""
+    IG = 'IG'
+    CAPITAL = 'CAPITAL'
 
 
 class DirectionEnum(str, Enum):
-    long = 'LONG'
-    short = 'SHORT'
+    """Enumeration of position directions."""
+    LONG = 'LONG'
+    SHORT = 'SHORT'
 
 
 class PositionType(BaseModel):
+    """Response type for existing positions."""
     position_id: str = Field(description='The ID of the position.', example='12345jgjv')
     epic: str = Field(description='EPIC of traded instrument.', example='EURUSD')
     broker: BrokerEnum = Field(description='Broker the position is help with.')
@@ -26,6 +31,7 @@ class PositionType(BaseModel):
 
 
 class PositionOpenType(BaseModel):
+    """Request body type for opening a new position."""
     epic: str = Field(description='EPIC of traded instrument.', example='EURUSD')
     broker: BrokerEnum = Field(description='Broker the position is help with.')
     direction: DirectionEnum = Field(description='Direction of position.')
