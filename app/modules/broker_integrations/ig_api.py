@@ -1,19 +1,20 @@
-import asyncio
+"""This module contains components of the IG Rest API integration."""
+
+import json
 import logging
 from datetime import datetime
 
 import aiohttp
-import json
-
 import requests
 from cachetools import TTLCache
 import pandas as pd
 
-cache = TTLCache(maxsize=10, ttl=60)
-store = {}
+cache = TTLCache(maxsize=10, ttl=60)  # Time limited cache for access token
+store = {}  # Share token store across all instances of IgAPI
 
 
 async def refresh_token(r_token, api_key):
+    """Update access token using current refresh token"""
     url = "https://demo-api.ig.com/gateway/deal/session/refresh-token"
 
     payload = json.dumps({
@@ -31,6 +32,7 @@ async def refresh_token(r_token, api_key):
 
 
 def parse_ig_point(point):
+    """Flatten historical data response."""
     if 'ask' not in point['openPrice'] or 'bid' not in point['openPrice']:
         return None
 
@@ -49,6 +51,8 @@ def parse_ig_point(point):
 
 
 class IgAPI:
+    """Class containing methods for interacting with the IG REST API."""
+
     def __init__(self, api_key, account_id, username, password):
         self.api_key = api_key
         self.username = username
@@ -58,35 +62,37 @@ class IgAPI:
         self.log = logging.getLogger('IgAPI')
 
     async def _token(self):
+        """Getter for access token."""
         if 'access_token' in cache:
             return cache['access_token']
-        elif 'refresh_token' in store:
-            r = await refresh_token(store['refresh_token'], self.api_key)
-            store['refresh_token'] = r['refresh_token']
-            cache['access_token'] = r['access_token']
-            return r['access_token']
-        else:
-            url = "https://demo-api.ig.com/gateway/deal/session"
+        if 'refresh_token' in store:
+            token_response = await refresh_token(store['refresh_token'], self.api_key)
+            store['refresh_token'] = token_response['refresh_token']
+            cache['access_token'] = token_response['access_token']
+            return token_response['access_token']
 
-            payload = json.dumps({
-                "identifier": self.username,
-                "password": self.password
-            })
-            headers = {
-                'X-IG-API-KEY': self.api_key,
-                'Version': '3',
-                'Content-Type': 'application/json'
-            }
+        url = "https://demo-api.ig.com/gateway/deal/session"
 
-            response = requests.request("POST", url, headers=headers, data=payload)
+        payload = json.dumps({
+            "identifier": self.username,
+            "password": self.password
+        })
+        headers = {
+            'X-IG-API-KEY': self.api_key,
+            'Version': '3',
+            'Content-Type': 'application/json'
+        }
 
-            resp = response.json()
-            store['refresh_token'] = resp['oauthToken']['refresh_token']
-            cache['access_token'] = resp['oauthToken']['access_token']
+        response = requests.request("POST", url, headers=headers, data=payload, timeout=10)
 
-            return cache['access_token']
+        resp = response.json()
+        store['refresh_token'] = resp['oauthToken']['refresh_token']
+        cache['access_token'] = resp['oauthToken']['access_token']
+
+        return cache['access_token']
 
     async def headers(self, version=2):
+        """Getter for shared headers."""
         return {
             'X-IG-API-KEY': self.api_key,
             'Version': str(version),
@@ -95,6 +101,7 @@ class IgAPI:
         }
 
     async def make_request(self, version, method, path, **kwargs):
+        """Wrapper method for making authenticated API requests."""
         headers = await self.headers(version)
         if 'headers' in kwargs:
             headers.update(kwargs['headers'])
@@ -109,15 +116,20 @@ class IgAPI:
                     raise
 
     async def get_positions(self):
+        """Get list of open positions."""
         return await self.make_request(2, "GET", '/positions')
 
     async def search_market(self, term):
+        """Search market by keyword."""
         return await self.make_request(1, "GET", '/markets', params={'searchTerm': term})
 
     async def get_deal_details(self, deal_reference):
+        """Get details of a deal."""
         return await self.make_request(1, "GET", f'/confirms/{deal_reference}')
 
-    async def open_position(self, direction, size, epic, expiry='-', limit=None, stop=None, currency='GBP'):
+    async def open_position(self, direction: str, size: int, epic: str, expiry='-', limit=None, stop=None,
+                            currency='GBP'):
+        """Open a new position"""
         payload = {
             "direction": direction,
             "size": size,
@@ -133,21 +145,8 @@ class IgAPI:
         resp = await self.make_request(2, "POST", '/positions/otc', json=payload)
         return await self.get_deal_details(resp['dealReference'])
 
-    async def get_historical_data(self, epic, resolution='DAY', max_values=100, start='2022-02-01', end='2022-02-02'):
-        resp = await self.make_request(3, "GET", f'/prices/{epic}',
-                                       params={'resolution': resolution,
-                                               'from': start + "T00:00:00",
-                                               'to': end + "T00:00:00",
-                                               'max': max_values,
-                                               'pageSize': 0})
-
-        if 'prices' not in resp or len(resp['prices']) == 0:
-            return
-
-        points = [parse_ig_point(point) for point in resp['prices']]
-        return pd.DataFrame(list(filter(None, points)))
-
     async def close_position(self, deal_id, size, direction):
+        """Close a position by deal_id."""
         payload = {
             "dealId": deal_id,
             "epic": None,
@@ -167,3 +166,18 @@ class IgAPI:
             await self.get_deal_details(resp['dealReference'])
 
         return details
+
+    async def get_historical_data(self, epic, resolution='DAY', max_values=100, start='2022-02-01', end='2022-02-02'):
+        """Get historical data for an instrument."""
+        resp = await self.make_request(3, "GET", f'/prices/{epic}',
+                                       params={'resolution': resolution,
+                                               'from': start + "T00:00:00",
+                                               'to': end + "T00:00:00",
+                                               'max': max_values,
+                                               'pageSize': 0})
+
+        if 'prices' not in resp or len(resp['prices']) == 0:
+            return
+
+        points = [parse_ig_point(point) for point in resp['prices']]
+        return pd.DataFrame(list(filter(None, points)))
