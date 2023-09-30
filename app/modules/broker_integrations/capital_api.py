@@ -1,17 +1,24 @@
-import requests
+"""
+Contains the integration classes and functions for the Capital.com API
+"""
+
 import json
+from types import MappingProxyType
 from base64 import b64encode, b64decode
+import requests
 from Crypto.PublicKey import RSA
 from Crypto.Cipher import PKCS1_v1_5
 
 
 class CapitalAPIException(Exception):
+    """Custom exception class for capital.com REST API errors."""
+
     def __init__(self, response, status_code, text):
         self.code = 0
         try:
             json_res = json.loads(text)
         except ValueError:
-            self.message = f"Invalid JSON error message from Binance: {response.text}"
+            self.message = f"Invalid JSON error message from Capital.com: {response.text}"
         else:
             self.code = json_res["errorCode"]
         self.status_code = status_code
@@ -19,14 +26,26 @@ class CapitalAPIException(Exception):
         self.request = getattr(response, "request", None)
 
     def __str__(self):  # pragma: no cover
-        return "APIError(status code=%s) || Capital.com Error: %s" % (
-            self.status_code,
-            self.code,
-        )
+        return f"APIError(status code={self.status_code}) || Capital.com Error: {self.code}"
+
+
+def encrypt_password(password, key):
+    """Encrypt API Key Password using RSA."""
+    key = b64decode(key)
+    key = RSA.importKey(key)
+    cipher = PKCS1_v1_5.new(key)
+    ciphertext = b64encode(cipher.encrypt(bytes(password, "utf-8")))
+    return ciphertext
 
 
 class Client:
+    """Capital.com REST API client class."""
+    x_token: str
+    cst: str
+    enc_key: list
+
     def __init__(self, username, api_key, password, demo=False):
+        """Initialise client object with credentials and live/dev endpoint."""
         self.username = username
         self.api_key = api_key
         self.password = password
@@ -40,37 +59,36 @@ class Client:
             self.server = "https://demo-api-capital.backend-capital.com"
 
     def __get_encryption_key__(self):
+        """Request encryption key from API and store it with the current timestamp in a class variable."""
         url = f"{self.server}/api/v1/session/encryptionKey"
-        data = self.__make_request__("get", url, "")[0]
+        data = self._make_request("get", url, "")[0]
         self.enc_key = [data["encryptionKey"], data["timeStamp"]]
 
-    def __make_request__(self, type, url, payload):
-        if type == "post":
-            response = requests.post(url, headers=self.headers, data=payload)
-        if type == "get":
-            response = requests.get(url, headers=self.headers, data=payload)
-        if type == "delete":
-            response = requests.delete(url, headers=self.headers, data=payload)
-        if type == "put":
-            response = requests.put(url, headers=self.headers, data=payload)
-        if not (200 <= response.status_code < 300):
-            raise CapitalAPIException(response, response.status_code, response.text)
+    def _make_request(self, method: str, url: str, payload: str):
+        """Wrapper function for making requests to the REST API."""
+        if method == "post":
+            response = requests.post(url, headers=self.headers, data=payload, timeout=30)
+        elif method == "get":
+            response = requests.get(url, headers=self.headers, data=payload, timeout=30)
+        elif method == "delete":
+            response = requests.delete(url, headers=self.headers, data=payload, timeout=30)
+        elif method == "put":
+            response = requests.put(url, headers=self.headers, data=payload, timeout=30)
         else:
-            return json.loads(response.text), response.headers
+            raise ValueError(f'Unsupported method: {method}')
 
-    def __encrypt__(self, password, key):
-        key = b64decode(key)
-        key = RSA.importKey(key)
-        cipher = PKCS1_v1_5.new(key)
-        ciphertext = b64encode(cipher.encrypt(bytes(password, "utf-8")))
-        return ciphertext
+        if 200 <= response.status_code or response.status_code > 300:
+            raise CapitalAPIException(response, response.status_code, response.text)
 
-    def __create_session__(self):
+        return json.loads(response.text), response.headers
+
+    def _create_session(self):
+        """Create a session using the stored credentials."""
         self.__get_encryption_key__()
         url = f"{self.server}/api/v1/session"
         string_encrypt = f"{self.password}|{self.enc_key[1]}"
         encrypted_password = str(
-            self.__encrypt__(string_encrypt, self.enc_key[0]), "utf-8"
+            encrypt_password(string_encrypt, self.enc_key[0]), "utf-8"
         )
         payload = json.dumps(
             {
@@ -79,74 +97,74 @@ class Client:
                 "encryptedPassword": True,
             }
         )
-        data = self.__make_request__("post", url, payload)[1]
-        self.CST = data["CST"]
-        self.X_TOKEN = data["X-SECURITY-TOKEN"]
+        data = self._make_request("post", url, payload)[1]
+        self.cst = data["CST"]
+        self.x_token = data["X-SECURITY-TOKEN"]
         self.headers = {
-            "X-SECURITY-TOKEN": self.X_TOKEN,
-            "CST": self.CST,
+            "X-SECURITY-TOKEN": self.x_token,
+            "CST": self.cst,
             "content-type": "application/json",
         }
 
-    def __confirmation__(self, deal_reference):
+    def _confirmation(self, deal_reference):
+        """Get deal confirmation object from API."""
         url = f"{self.server}/api/v1/confirms/{deal_reference}"
-        return self.__make_request__("get", url, payload="")[0]
+        return self._make_request("get", url, payload="")[0]
 
-    # Returns all accounts in server
     def all_accounts(self):
-        self.__create_session__()
+        """List accounts under this API key."""
+        self._create_session()
         url = f"{self.server}/api/v1/accounts"
-        data = self.__make_request__("get", url, payload="")[0]
+        data = self._make_request("get", url, payload="")[0]
         self.__log_out__()
         return data
 
-    # Returns account preferences, i.e. leverage settings and trading mode
     def account_pref(self):
-        self.__create_session__()
+        """Returns account preferences, i.e. leverage settings and trading mode."""
+        self._create_session()
         url = f"{self.server}/api/v1/accounts/preferences"
-        data = self.__make_request__("get", url, payload="")[0]
+        data = self._make_request("get", url, payload="")[0]
         self.__log_out__()
         return data
 
-    # Update account preferences
     def update_account_pref(
             self,
-            leverages={
+            leverages=MappingProxyType({
                 "SHARES": 5,
                 "INDICES": 20,
                 "CRYPTOCURRENCIES": 2,
-            },
+            }),
             hedging_mode=False,
     ):
-        self.__create_session__()
+        """Update the account preferences for this API key."""
+        self._create_session()
         data = {
             "leverages": leverages,
             "hedgingMode": hedging_mode,
         }
         payload = json.dumps(data)
         url = f"{self.server}/api/v1/accounts/preferences"
-        data = self.__make_request__("put", url, payload=payload)[0]
+        data = self._make_request("put", url, payload=payload)[0]
         self.__log_out__()
         return data
 
-    # Switch active account
     def change_active_account(self, account_id):
-        self.__create_session__()
+        """Change the active account to the supplier account_id."""
+        self._create_session()
         url = f"{self.server}/api/v1/session"
         payload = json.dumps({"accountId": account_id})
-        data = self.__make_request__("put", url, payload=payload)[0]
+        data = self._make_request("put", url, payload=payload)[0]
         self.__log_out__()
         return data
 
-    # gets you all current positions
     def all_positions(self):
-        self.__create_session__()
+        """Request a list of all open positions from the API."""
+        self._create_session()
         url = f"{self.server}/api/v1/positions"
-        data = self.__make_request__("get", url, payload="")[0]
+        data = self._make_request("get", url, payload="")[0]
         self.__log_out__()
         return data
 
-    # Opens a new position
     def open_position(
             self,
             epic,
@@ -161,7 +179,8 @@ class Client:
             profit_distance=None,
             profit_amount=None,
     ):
-        self.__create_session__()
+        """Open a new position."""
+        self._create_session()
         url = f"{self.server}/api/v1/positions"
         data = {
             "epic": epic,
@@ -183,21 +202,21 @@ class Client:
         if profit_amount is not None:
             data.update({"profitAmount": profit_amount})
         payload = json.dumps(data)
-        data = self.__make_request__("post", url, payload=payload)[0]
-        final_data = self.__confirmation__(data["dealReference"])
+        data = self._make_request("post", url, payload=payload)[0]
+        final_data = self._confirmation(data["dealReference"])
         self.__log_out__()
         return final_data
 
-    # Closes a specific position with the deal_id
     def close_position(self, deal_id):
-        self.__create_session__()
+        """Close a position using the deal_id."""
+
+        self._create_session()
         url = f"{self.server}/api/v1/positions/{deal_id}"
-        data = self.__make_request__("delete", url, payload="")[0]
-        final_data = self.__confirmation__(data["dealReference"])
+        data = self._make_request("delete", url, payload="")[0]
+        final_data = self._confirmation(data["dealReference"])
         self.__log_out__()
         return final_data
 
-    # Update the position
     def update_position(
             self,
             deal_id,
@@ -210,6 +229,7 @@ class Client:
             profit_distance=None,
             profit_amount=None,
     ):
+        """Update a position using the deal_id."""
         data = {"guaranteedStop": guaranteed_stop, "trailingStop": trailing_stop}
         if stop_level is not None:
             data.update({"stopLevel": stop_level})
@@ -224,29 +244,28 @@ class Client:
         if profit_amount is not None:
             data.update({"profitAmount": profit_amount})
         payload = json.dumps(data)
-        self.__create_session__()
+        self._create_session()
         url = f"{self.server}/api/v1/positions/{deal_id}"
-        data = self.__make_request__("put", url, payload=payload)[0]
-        final_data = self.__confirmation__(data["dealReference"])
+        data = self._make_request("put", url, payload=payload)[0]
+        final_data = self._confirmation(data["dealReference"])
         self.__log_out__()
         return final_data
 
-    # Returns all open working orders for the active account
     def all_working_orders(self):
-        self.__create_session__()
+        """List all working orders."""
+        self._create_session()
         url = f"{self.server}/api/v1/workingorders"
-        data = self.__make_request__("get", url, payload="")[0]
+        data = self._make_request("get", url, payload="")[0]
         self.__log_out__()
         return data
 
-    # Create a limit or stop order
     def create_working_order(
             self,
             epic,
             direction,
             size,
             level,
-            type,
+            order_type,
             guaranteed_stop=False,
             trailing_stop=False,
             stop_level=None,
@@ -256,14 +275,15 @@ class Client:
             profit_distance=None,
             profit_amount=None,
     ):
-        self.__create_session__()
+        """Create a working order."""
+        self._create_session()
         url = f"{self.server}/api/v1/workingorders"
         data = {
             "epic": epic,
             "direction": direction.upper(),
             "size": str(size),
             "level": level,
-            "type": type,
+            "type": order_type,
             "guaranteedStop": guaranteed_stop,
             "trailingStop": trailing_stop,
         }
@@ -280,12 +300,11 @@ class Client:
         if profit_amount is not None:
             data.update({"profitAmount": profit_amount})
         payload = json.dumps(data)
-        data = self.__make_request__("post", url, payload=payload)[0]
-        final_data = self.__confirmation__(data["dealReference"])
+        data = self._make_request("post", url, payload=payload)[0]
+        final_data = self._confirmation(data["dealReference"])
         self.__log_out__()
         return final_data
 
-    # Update a limit or stop order
     def update_working_order(
             self,
             deal_id,
@@ -299,6 +318,7 @@ class Client:
             profit_distance=None,
             profit_amount=None,
     ):
+        """Update a working order by deal_id."""
         data = {
             "guaranteedStop": guaranteed_stop,
             "trailingStop": trailing_stop,
@@ -317,72 +337,73 @@ class Client:
         if profit_amount is not None:
             data.update({"profitAmount": profit_amount})
         payload = json.dumps(data)
-        self.__create_session__()
+        self._create_session()
         url = f"{self.server}/api/v1/workingorders/{deal_id}"
-        data = self.__make_request__("put", url, payload=payload)[0]
-        final_data = self.__confirmation__(data["dealReference"])
+        data = self._make_request("put", url, payload=payload)[0]
+        final_data = self._confirmation(data["dealReference"])
         self.__log_out__()
         return final_data
 
-    # Delete a limit or stop order
     def delete_working_order(self, deal_id):
-        self.__create_session__()
+        """Delete a working order by deal_id."""
+        self._create_session()
         url = f"{self.server}/api/v1/workingorders/{deal_id}"
-        data = self.__make_request__("delete", url, payload="")[0]
-        final_data = self.__confirmation__(data["dealReference"])
+        data = self._make_request("delete", url, payload="")[0]
+        final_data = self._confirmation(data["dealReference"])
         self.__log_out__()
         return final_data
 
-    # Returns all top-level nodes (market categories) in the market navigation hierarchy
     def all_top(self):
-        self.__create_session__()
+        """Returns all top-level nodes (market categories) in the market navigation hierarchy."""
+        self._create_session()
         url = f"{self.server}/api/v1/marketnavigation"
-        data = self.__make_request__("get", url, payload="")
+        data = self._make_request("get", url, payload="")
         self.__log_out__()
         return data
 
-    # Returns all sub-nodes (markets) of the given node (market category) in the market navigation hierarchy
     def all_top_sub(self, node_id):
-        self.__create_session__()
+        """Returns all sub-nodes (markets) of the given node (market category) in the market navigation hierarchy."""
+        self._create_session()
         url = f"{self.server}/api/v1/marketnavigation/{node_id}?limit=500"
-        data = self.__make_request__("get", url, payload="")
+        data = self._make_request("get", url, payload="")
         self.__log_out__()
         return data
 
-    # Returns the details of the given markets
     def market_details(self, market):
-        self.__create_session__()
+        """Returns the details of the given markets."""
+        self._create_session()
         url = f"{self.server}/api/v1/markets?searchTerm={market}"
-        data = self.__make_request__("get", url, payload="")
+        data = self._make_request("get", url, payload="")
         self.__log_out__()
         return data
 
-    # Returns the details of the given market
     def single_market_details(self, epic):
-        self.__create_session__()
+        """Returns the details of the given market."""
+        self._create_session()
         url = f"{self.server}/api/v1/markets/{epic}"
-        data = self.__make_request__("get", url, payload="")
+        data = self._make_request("get", url, payload="")
         self.__log_out__()
         return data
 
-    # Returns historical prices for a particular instrument
-    def prices(self, epic, resolution="MINUTE", max=10):
-        self.__create_session__()
-        url = f"{self.server}/api/v1/prices/{epic}?resolution={resolution}&max={max}"
-        data = self.__make_request__("get", url, payload="")
+    def prices(self, epic, resolution="MINUTE", limit=10):
+        """Returns historical prices for a particular instrument"""
+        self._create_session()
+        url = f"{self.server}/api/v1/prices/{epic}?resolution={resolution}&max={limit}"
+        data = self._make_request("get", url, payload="")
         self.__log_out__()
         return data
 
-    # Client sentiment for market
     def client_sentiment(self, market_id):
-        self.__create_session__()
+        """Client sentiment for market"""
+        self._create_session()
         url = f"{self.server}/api/v1/clientsentiment/{market_id}"
-        data = self.__make_request__("get", url, payload="")
+        data = self._make_request("get", url, payload="")
         self.__log_out__()
         return data
 
     def __log_out__(self):
-        requests.delete(f"{self.server}/api/v1/session", headers=self.headers)
+        """Delete the active session."""
+        requests.delete(f"{self.server}/api/v1/session", headers=self.headers, timeout=5)
         self.headers = {
             "X-CAP-API-KEY": self.api_key,
             "content-type": "application/json",

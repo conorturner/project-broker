@@ -1,2 +1,6 @@
 [MASTER]
 init-hook='import sys; sys.path.append("./")'
+
+[FORMAT]
+# Maximum number of characters on a single line.
+max-line-length=120
