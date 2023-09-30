@@ -1,3 +1,5 @@
+"""Contains functions and types for authenticating API requests via token secret.."""
+
 from fastapi import HTTPException, Header
 
 AccessTokenType = Header(..., description='Access token generated using master password.')

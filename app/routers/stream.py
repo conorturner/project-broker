@@ -1,8 +1,7 @@
-from fastapi import APIRouter, Depends, HTTPException, WebSocket
-from typing import List
-from app.schemas.poisitions import PositionType, PositionOpenType
+"""Router for /stream API routes"""
+
+from fastapi import APIRouter, WebSocket
 from app.schemas.errors import EntityNotFound
-from app.modules.message_bus import bus
 
 router = APIRouter(prefix="/stream", tags=["Streaming"])
 
@@ -11,6 +10,7 @@ not_found_response = {"model": EntityNotFound, "description": "Stream Not Found"
 
 @router.websocket("/ochl")
 async def websocket_endpoint(websocket: WebSocket):
+    """Stream OCHL data via websocket."""
     await websocket.accept()
     while True:
         data = await websocket.receive_text()
@@ -19,6 +19,7 @@ async def websocket_endpoint(websocket: WebSocket):
 
 @router.websocket("/tick")
 async def websocket_endpoint(websocket: WebSocket):
+    """Stream tick data via websocket."""
     await websocket.accept()
     while True:
         data = await websocket.receive_text()
