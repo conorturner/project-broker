@@ -77,7 +77,7 @@ class Client:
         else:
             raise ValueError(f'Unsupported method: {method}')
 
-        if 200 <= response.status_code or response.status_code > 300:
+        if not (200 <= response.status_code < 300):
             raise CapitalAPIException(response, response.status_code, response.text)
 
         return json.loads(response.text), response.headers
