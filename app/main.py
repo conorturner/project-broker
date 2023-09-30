@@ -1,3 +1,5 @@
+"""Module docstring"""
+
 import asyncio
 
 from fastapi import FastAPI, Depends
@@ -8,6 +10,7 @@ from app.routers import position, history, stream
 
 
 async def test():
+    """This is just an example async function that can run in the background."""
     while True:
         await asyncio.sleep(1)
         # print('working')
@@ -38,7 +41,8 @@ app = FastAPI(
 
 
 @app.on_event('startup')
-async def start():  # Async tasks must be started here when using uvicorn
+async def start():
+    """Async tasks must be started here when using uvicorn"""
     asyncio.create_task(test())
 
 
