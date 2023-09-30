@@ -82,7 +82,7 @@ class Client:
 
         return json.loads(response.text), response.headers
 
-    def _create_session(self):
+    def __create_session(self):
         """Create a session using the stored credentials."""
         self.__get_encryption_key__()
         url = f"{self.server}/api/v1/session"
@@ -106,25 +106,25 @@ class Client:
             "content-type": "application/json",
         }
 
-    def _confirmation(self, deal_reference):
+    def __confirmation(self, deal_reference):
         """Get deal confirmation object from API."""
         url = f"{self.server}/api/v1/confirms/{deal_reference}"
         return self._make_request("get", url, payload="")[0]
 
     def all_accounts(self):
         """List accounts under this API key."""
-        self._create_session()
+        self.__create_session()
         url = f"{self.server}/api/v1/accounts"
         data = self._make_request("get", url, payload="")[0]
-        self.__log_out__()
+        self.__log_out()
         return data
 
     def account_pref(self):
         """Returns account preferences, i.e. leverage settings and trading mode."""
-        self._create_session()
+        self.__create_session()
         url = f"{self.server}/api/v1/accounts/preferences"
         data = self._make_request("get", url, payload="")[0]
-        self.__log_out__()
+        self.__log_out()
         return data
 
     def update_account_pref(
@@ -137,7 +137,7 @@ class Client:
             hedging_mode=False,
     ):
         """Update the account preferences for this API key."""
-        self._create_session()
+        self.__create_session()
         data = {
             "leverages": leverages,
             "hedgingMode": hedging_mode,
@@ -145,24 +145,24 @@ class Client:
         payload = json.dumps(data)
         url = f"{self.server}/api/v1/accounts/preferences"
         data = self._make_request("put", url, payload=payload)[0]
-        self.__log_out__()
+        self.__log_out()
         return data
 
     def change_active_account(self, account_id):
         """Change the active account to the supplier account_id."""
-        self._create_session()
+        self.__create_session()
         url = f"{self.server}/api/v1/session"
         payload = json.dumps({"accountId": account_id})
         data = self._make_request("put", url, payload=payload)[0]
-        self.__log_out__()
+        self.__log_out()
         return data
 
     def all_positions(self):
         """Request a list of all open positions from the API."""
-        self._create_session()
+        self.__create_session()
         url = f"{self.server}/api/v1/positions"
         data = self._make_request("get", url, payload="")[0]
-        self.__log_out__()
+        self.__log_out()
         return data
 
     def open_position(
@@ -180,7 +180,7 @@ class Client:
             profit_amount=None,
     ):
         """Open a new position."""
-        self._create_session()
+        self.__create_session()
         url = f"{self.server}/api/v1/positions"
         data = {
             "epic": epic,
@@ -203,18 +203,18 @@ class Client:
             data.update({"profitAmount": profit_amount})
         payload = json.dumps(data)
         data = self._make_request("post", url, payload=payload)[0]
-        final_data = self._confirmation(data["dealReference"])
-        self.__log_out__()
+        final_data = self.__confirmation(data["dealReference"])
+        self.__log_out()
         return final_data
 
     def close_position(self, deal_id):
         """Close a position using the deal_id."""
 
-        self._create_session()
+        self.__create_session()
         url = f"{self.server}/api/v1/positions/{deal_id}"
         data = self._make_request("delete", url, payload="")[0]
-        final_data = self._confirmation(data["dealReference"])
-        self.__log_out__()
+        final_data = self.__confirmation(data["dealReference"])
+        self.__log_out()
         return final_data
 
     def update_position(
@@ -244,19 +244,19 @@ class Client:
         if profit_amount is not None:
             data.update({"profitAmount": profit_amount})
         payload = json.dumps(data)
-        self._create_session()
+        self.__create_session()
         url = f"{self.server}/api/v1/positions/{deal_id}"
         data = self._make_request("put", url, payload=payload)[0]
-        final_data = self._confirmation(data["dealReference"])
-        self.__log_out__()
+        final_data = self.__confirmation(data["dealReference"])
+        self.__log_out()
         return final_data
 
     def all_working_orders(self):
         """List all working orders."""
-        self._create_session()
+        self.__create_session()
         url = f"{self.server}/api/v1/workingorders"
         data = self._make_request("get", url, payload="")[0]
-        self.__log_out__()
+        self.__log_out()
         return data
 
     def create_working_order(
@@ -276,7 +276,7 @@ class Client:
             profit_amount=None,
     ):
         """Create a working order."""
-        self._create_session()
+        self.__create_session()
         url = f"{self.server}/api/v1/workingorders"
         data = {
             "epic": epic,
@@ -301,8 +301,8 @@ class Client:
             data.update({"profitAmount": profit_amount})
         payload = json.dumps(data)
         data = self._make_request("post", url, payload=payload)[0]
-        final_data = self._confirmation(data["dealReference"])
-        self.__log_out__()
+        final_data = self.__confirmation(data["dealReference"])
+        self.__log_out()
         return final_data
 
     def update_working_order(
@@ -337,71 +337,71 @@ class Client:
         if profit_amount is not None:
             data.update({"profitAmount": profit_amount})
         payload = json.dumps(data)
-        self._create_session()
+        self.__create_session()
         url = f"{self.server}/api/v1/workingorders/{deal_id}"
         data = self._make_request("put", url, payload=payload)[0]
-        final_data = self._confirmation(data["dealReference"])
-        self.__log_out__()
+        final_data = self.__confirmation(data["dealReference"])
+        self.__log_out()
         return final_data
 
     def delete_working_order(self, deal_id):
         """Delete a working order by deal_id."""
-        self._create_session()
+        self.__create_session()
         url = f"{self.server}/api/v1/workingorders/{deal_id}"
         data = self._make_request("delete", url, payload="")[0]
-        final_data = self._confirmation(data["dealReference"])
-        self.__log_out__()
+        final_data = self.__confirmation(data["dealReference"])
+        self.__log_out()
         return final_data
 
     def all_top(self):
         """Returns all top-level nodes (market categories) in the market navigation hierarchy."""
-        self._create_session()
+        self.__create_session()
         url = f"{self.server}/api/v1/marketnavigation"
         data = self._make_request("get", url, payload="")
-        self.__log_out__()
+        self.__log_out()
         return data
 
     def all_top_sub(self, node_id):
         """Returns all sub-nodes (markets) of the given node (market category) in the market navigation hierarchy."""
-        self._create_session()
+        self.__create_session()
         url = f"{self.server}/api/v1/marketnavigation/{node_id}?limit=500"
         data = self._make_request("get", url, payload="")
-        self.__log_out__()
+        self.__log_out()
         return data
 
     def market_details(self, market):
         """Returns the details of the given markets."""
-        self._create_session()
+        self.__create_session()
         url = f"{self.server}/api/v1/markets?searchTerm={market}"
         data = self._make_request("get", url, payload="")
-        self.__log_out__()
+        self.__log_out()
         return data
 
     def single_market_details(self, epic):
         """Returns the details of the given market."""
-        self._create_session()
+        self.__create_session()
         url = f"{self.server}/api/v1/markets/{epic}"
         data = self._make_request("get", url, payload="")
-        self.__log_out__()
+        self.__log_out()
         return data
 
     def prices(self, epic, resolution="MINUTE", limit=10):
         """Returns historical prices for a particular instrument"""
-        self._create_session()
+        self.__create_session()
         url = f"{self.server}/api/v1/prices/{epic}?resolution={resolution}&max={limit}"
         data = self._make_request("get", url, payload="")
-        self.__log_out__()
+        self.__log_out()
         return data
 
     def client_sentiment(self, market_id):
         """Client sentiment for market"""
-        self._create_session()
+        self.__create_session()
         url = f"{self.server}/api/v1/clientsentiment/{market_id}"
         data = self._make_request("get", url, payload="")
-        self.__log_out__()
+        self.__log_out()
         return data
 
-    def __log_out__(self):
+    def __log_out(self):
         """Delete the active session."""
         requests.delete(f"{self.server}/api/v1/session", headers=self.headers, timeout=5)
         self.headers = {

@@ -61,7 +61,7 @@ class IgAPI:
         self.url = "https://demo-api.ig.com/gateway/deal"
         self.log = logging.getLogger('IgAPI')
 
-    async def _token(self):
+    async def __token(self):
         """Getter for access token."""
         if 'access_token' in cache:
             return cache['access_token']
@@ -83,6 +83,7 @@ class IgAPI:
             'Content-Type': 'application/json'
         }
 
+        # TODO: this should be async
         response = requests.request("POST", url, headers=headers, data=payload, timeout=10)
 
         resp = response.json()
@@ -91,18 +92,18 @@ class IgAPI:
 
         return cache['access_token']
 
-    async def headers(self, version=2):
+    async def __headers(self, version=2):
         """Getter for shared headers."""
         return {
             'X-IG-API-KEY': self.api_key,
             'Version': str(version),
             'IG-ACCOUNT-ID': self.account_id,
-            'Authorization': f'Bearer {await self._token()}'
+            'Authorization': f'Bearer {await self.__token()}'
         }
 
-    async def make_request(self, version, method, path, **kwargs):
+    async def __make_request(self, version, method, path, **kwargs):
         """Wrapper method for making authenticated API requests."""
-        headers = await self.headers(version)
+        headers = await self.__headers(version)
         if 'headers' in kwargs:
             headers.update(kwargs['headers'])
             del kwargs['headers']
@@ -117,15 +118,15 @@ class IgAPI:
 
     async def get_positions(self):
         """Get list of open positions."""
-        return await self.make_request(2, "GET", '/positions')
+        return await self.__make_request(2, "GET", '/positions')
 
     async def search_market(self, term):
         """Search market by keyword."""
-        return await self.make_request(1, "GET", '/markets', params={'searchTerm': term})
+        return await self.__make_request(1, "GET", '/markets', params={'searchTerm': term})
 
     async def get_deal_details(self, deal_reference):
         """Get details of a deal."""
-        return await self.make_request(1, "GET", f'/confirms/{deal_reference}')
+        return await self.__make_request(1, "GET", f'/confirms/{deal_reference}')
 
     async def open_position(self, direction: str, size: int, epic: str, expiry='-', limit=None, stop=None,
                             currency='GBP'):
@@ -142,7 +143,7 @@ class IgAPI:
             "limitDistance": limit,
             "stopDistance": stop,
         }
-        resp = await self.make_request(2, "POST", '/positions/otc', json=payload)
+        resp = await self.__make_request(2, "POST", '/positions/otc', json=payload)
         return await self.get_deal_details(resp['dealReference'])
 
     async def close_position(self, deal_id, size, direction):
@@ -159,8 +160,8 @@ class IgAPI:
             "quoteId": None
         }
 
-        resp = await self.make_request(1, "POST", '/positions/otc',
-                                       headers={'_method': 'DELETE', }, json=payload)
+        resp = await self.__make_request(1, "POST", '/positions/otc',
+                                         headers={'_method': 'DELETE', }, json=payload)
         details = await self.get_deal_details(resp['dealReference'])
         while details['status'] != 'CLOSED':
             await self.get_deal_details(resp['dealReference'])
@@ -169,8 +170,8 @@ class IgAPI:
 
     async def get_historical_data(self, epic, resolution='DAY', max_values=100, start='2022-02-01', end='2022-02-02'):
         """Get historical data for an instrument."""
-        resp = await self.make_request(3, "GET", f'/prices/{epic}',
-                                       params={'resolution': resolution,
+        resp = await self.__make_request(3, "GET", f'/prices/{epic}',
+                                         params={'resolution': resolution,
                                                'from': start + "T00:00:00",
                                                'to': end + "T00:00:00",
                                                'max': max_values,

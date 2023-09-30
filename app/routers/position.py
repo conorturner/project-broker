@@ -1,7 +1,7 @@
 """Router for /position API routes"""
 
-from fastapi import APIRouter
 from typing import List
+from fastapi import APIRouter
 from app.schemas.poisitions import PositionType, PositionOpenType
 from app.schemas.errors import EntityNotFound
 
