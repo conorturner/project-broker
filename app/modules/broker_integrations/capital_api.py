@@ -182,7 +182,8 @@ class CapitalClient(BaseIntegration):
         return data
 
     async def get_position(self, deal_id):
-        pass
+        raise NotImplementedError()
 
     async def get_positions(self):
-        pass
+        raise NotImplementedError()
+
