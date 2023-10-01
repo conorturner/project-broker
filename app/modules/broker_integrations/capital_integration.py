@@ -4,16 +4,14 @@ Contains the integration classes and functions for the Capital.com API
 
 import json
 import logging
-from types import MappingProxyType
 from base64 import b64encode, b64decode
 
 import aiohttp
-import requests
 from Crypto.PublicKey import RSA
 from Crypto.Cipher import PKCS1_v1_5
 from cachetools import TTLCache
 
-from app.modules.broker_integrations.base_integration import BaseIntegration
+from app.modules.broker_integrations.base_integration import BaseIntegration, NewPositionDetails
 
 cache = TTLCache(maxsize=10, ttl=600)  # Time limited cache for access token
 store = {}  # Share token store across all instances of CapitalClient
@@ -47,7 +45,8 @@ def encrypt_password(password, key):
     return ciphertext
 
 
-class CapitalClient(BaseIntegration):
+class CapitalIntegration(BaseIntegration):
+    """Class for the capital.com API integration."""
     def __init__(self, username, api_key, password, demo=False):
         """Initialise client object with credentials and live/dev endpoint."""
         self.username = username
@@ -134,36 +133,26 @@ class CapitalClient(BaseIntegration):
         """List accounts under this API key."""
         return (await self.__auth_request("GET", "/api/v1/accounts"))['accounts']
 
-    async def open_position(
-            self,
-            epic,
-            direction,
-            size,
-            guaranteed_stop=False,
-            trailing_stop=False,
-            stop_distance=None,
-            stop_amount=None,
-            profit_distance=None,
-    ):
+    async def open_position(self, epic: str, details: NewPositionDetails):
         """Open a new position."""
         data = {
             "epic": epic,
-            "direction": direction.upper(),
-            "size": str(size),
-            "guaranteedStop": guaranteed_stop,
-            "trailingStop": trailing_stop,
+            "direction": details.direction.upper(),
+            "size": str(details.size),
+            "guaranteedStop": False,
+            "trailingStop": False,
         }
 
-        if stop_distance is not None:
-            data.update({"stopDistance": stop_distance})
-        if profit_distance is not None:
-            data.update({"profitDistance": profit_distance})
+        if details.stop is not None:
+            data.update({"stopDistance": details.stop})
+        if details.limit is not None:
+            data.update({"profitDistance": details.limit})
 
         data = await self.__auth_request("post", "/api/v1/positions", json=data)
         final_data = await self.__confirmation(data["dealReference"])
         return final_data
 
-    async def close_position(self, deal_id):
+    async def close_position(self, deal_id, size, direction):
         """Close a position using the deal_id."""
         url = f"{self.server}/api/v1/positions/{deal_id}"
         data = await self.__auth_request("DELETE", url)
@@ -186,4 +175,3 @@ class CapitalClient(BaseIntegration):
 
     async def get_positions(self):
         raise NotImplementedError()
-

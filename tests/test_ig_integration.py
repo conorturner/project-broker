@@ -2,7 +2,7 @@ import os
 import unittest
 from unittest import mock
 
-from app.modules.broker_integrations.ig_api import IGIntegration
+from app.modules.broker_integrations.ig_integration import IGIntegration
 
 IG_API_KEY = os.environ.get('IG_API_KEY')
 IG_ACCOUNT = os.environ.get('IG_ACCOUNT')

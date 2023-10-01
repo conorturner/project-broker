@@ -5,11 +5,10 @@ import logging
 from datetime import datetime
 
 import aiohttp
-import requests
 from cachetools import TTLCache
 import pandas as pd
 
-from app.modules.broker_integrations.base_integration import BaseIntegration
+from app.modules.broker_integrations.base_integration import BaseIntegration, NewPositionDetails
 
 cache = TTLCache(maxsize=10, ttl=60)  # Time limited cache for access token
 store = {}  # Share token store across all instances of IgAPI
@@ -132,20 +131,19 @@ class IGIntegration(BaseIntegration):
         """Get details of a deal."""
         return await self.__make_request(1, "GET", f'/confirms/{deal_reference}')
 
-    async def open_position(self, direction: str, size: int, epic: str, expiry='-', limit=None, stop=None,
-                            currency='GBP'):
+    async def open_position(self, epic: str, details: NewPositionDetails):
         """Open a new position"""
         payload = {
-            "direction": direction,
-            "size": size,
+            "direction": details.direction,
+            "size": details.size,
             "orderType": "MARKET",
             "epic": epic,
-            "currencyCode": currency,
-            "expiry": expiry,
+            "currencyCode": details.currency,
+            "expiry": details.expiry,
             "forceOpen": True,
             "guaranteedStop": False,
-            "limitDistance": limit,
-            "stopDistance": stop,
+            "limitDistance": details.limit,
+            "stopDistance": details.stop,
         }
         resp = await self.__make_request(2, "POST", '/positions/otc', json=payload)
         return await self.get_deal_details(resp['dealReference'])

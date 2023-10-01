@@ -1,6 +1,6 @@
 import os
 import unittest
-from app.modules.broker_integrations.capital_api import CapitalClient
+from app.modules.broker_integrations.capital_integration import CapitalIntegration
 
 CAPITAL_API_KEY = os.environ.get('CAPITAL_API_KEY')
 CAPITAL_USER = os.environ.get('CAPITAL_USER')
@@ -9,13 +9,13 @@ CAPITAL_PASS = os.environ.get('CAPITAL_PASS')
 
 class CapitalTestCase(unittest.IsolatedAsyncioTestCase):
     async def test_all_accounts(self):
-        client = CapitalClient(CAPITAL_USER, CAPITAL_API_KEY, CAPITAL_PASS, demo=True)
+        client = CapitalIntegration(CAPITAL_USER, CAPITAL_API_KEY, CAPITAL_PASS, demo=True)
         account = await client.all_accounts()
         print(account)
         # print(account)
 
     async def test_search_instruments(self):
-        client = CapitalClient(CAPITAL_USER, CAPITAL_API_KEY, CAPITAL_PASS, demo=True)
+        client = CapitalIntegration(CAPITAL_USER, CAPITAL_API_KEY, CAPITAL_PASS, demo=True)
         account = await client.search_instruments('crude')
         print(account)
         # print(account)
