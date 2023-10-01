@@ -176,7 +176,7 @@ class IGIntegration(BaseIntegration):
         resp = await self.__make_request(1, "POST", '/positions/otc',
                                          headers={'_method': 'DELETE', }, json=payload)
         details = await self.get_deal_details(resp['dealReference'])
-        while details['status'] != 'CLOSED':
+        while details['status'] != 'CLOSED':  # TODO: a timeout may be needed here to wait for close.
             await self.get_deal_details(resp['dealReference'])
 
         return details

@@ -7,8 +7,8 @@ from dataclasses import dataclass
 @dataclass
 class NewPositionDetails:
     """Contains fields for creating a new position."""
-    size: float
     direction: str
+    size: float
     limit: float = None
     stop: float = None
     currency: str = 'GBP'
