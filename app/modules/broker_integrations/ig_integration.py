@@ -51,6 +51,17 @@ def parse_ig_point(point):
     }
 
 
+class IGAPIException(Exception):
+    """Custom exception class for capital.com REST API errors."""
+
+    def __init__(self, status_code, text):
+        self.status_code = status_code
+        self.text = text
+
+    def __str__(self):
+        return f"APIError(status code={self.status_code}) || Error: {self.text}"
+
+
 class IGIntegration(BaseIntegration):
     """Class containing methods for interacting with the IG REST API."""
 
@@ -116,7 +127,7 @@ class IGIntegration(BaseIntegration):
         async with aiohttp.ClientSession() as session:
             async with session.request(method, self.url + path, headers=headers, **kwargs) as resp:
                 if not 200 <= resp.status < 300:
-                    raise Exception(f'Status Code: {resp.status} \n {await resp.text()}')
+                    raise IGAPIException(resp.status, await resp.text())
                 try:
                     return await resp.json()
                 except:
