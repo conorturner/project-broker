@@ -9,6 +9,8 @@ import requests
 from cachetools import TTLCache
 import pandas as pd
 
+from app.modules.broker_integrations.base_integration import BaseIntegration
+
 cache = TTLCache(maxsize=10, ttl=60)  # Time limited cache for access token
 store = {}  # Share token store across all instances of IgAPI
 
@@ -50,7 +52,7 @@ def parse_ig_point(point):
     }
 
 
-class IgAPI:
+class IGIntegration(BaseIntegration):
     """Class containing methods for interacting with the IG REST API."""
 
     def __init__(self, api_key, account_id, username, password, demo=True):
@@ -126,10 +128,6 @@ class IgAPI:
         """Get list of open positions."""
         return await self.__make_request(2, "GET", '/positions')
 
-    async def search_market(self, term):
-        """Search market by keyword."""
-        return await self.__make_request(1, "GET", '/markets', params={'searchTerm': term})
-
     async def get_deal_details(self, deal_reference):
         """Get details of a deal."""
         return await self.__make_request(1, "GET", f'/confirms/{deal_reference}')
@@ -188,3 +186,10 @@ class IgAPI:
 
         points = [parse_ig_point(point) for point in resp['prices']]
         return pd.DataFrame(list(filter(None, points)))
+
+    async def get_position(self, deal_id: str):
+        raise NotImplementedError()
+
+    async def search_instruments(self, search_term):
+        """Search market by keyword."""
+        return await self.__make_request(1, "GET", '/markets', params={'searchTerm': search_term})

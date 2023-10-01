@@ -2,15 +2,13 @@ import os
 import unittest
 from unittest import mock
 
-from app.modules.broker_integrations.ig_api import IgAPI
+from app.modules.broker_integrations.ig_api import IgClient
 
 IG_API_KEY = os.environ.get('IG_API_KEY')
 IG_ACCOUNT = os.environ.get('IG_ACCOUNT')
 IG_USER = os.environ.get('IG_USER')
 IG_PASS = os.environ.get('IG_PASS')
 
-
-# novel article on mocking http://www.gregreda.com/2021/06/28/mocking-imported-module-function-python/
 
 class MockResponse:
     def __init__(self, text, status):
@@ -32,9 +30,9 @@ class MockResponse:
 
 class IGIntegrationTestCase(unittest.IsolatedAsyncioTestCase):
     async def test_make_request(self):
-        api = IgAPI(IG_API_KEY, IG_ACCOUNT, IG_USER, IG_PASS)
+        api = IgClient(IG_API_KEY, IG_ACCOUNT, IG_USER, IG_PASS)
         mock_response = {'correct': 'response'}
-        with mock.patch('app.modules.broker_integrations.ig_api.aiohttp.ClientSession.request',
+        with mock.patch('aiohttp.ClientSession.request',
                         return_value=MockResponse(mock_response, 200)) as mock_request:
             with mock.patch('app.modules.broker_integrations.ig_api.IgAPI._IgAPI__headers',
                             return_value={'example': 'header', 'dict': 1}) as mock_headers:
@@ -59,7 +57,7 @@ class IGIntegrationTestCase(unittest.IsolatedAsyncioTestCase):
 
         with mock.patch('app.modules.broker_integrations.ig_api.IgAPI._IgAPI__make_request',
                         return_value=mock_response) as mock_make_request:
-            api = IgAPI(IG_API_KEY, IG_ACCOUNT, IG_USER, IG_PASS)
+            api = IgClient(IG_API_KEY, IG_ACCOUNT, IG_USER, IG_PASS)
             result = await api.search_market('wall street cash')
             self.assertIn('markets', mock_response)
             self.assertIsInstance(result['markets'], list)
@@ -67,7 +65,7 @@ class IGIntegrationTestCase(unittest.IsolatedAsyncioTestCase):
 
     async def test_open_close_position(self):
         self.skipTest('No trades at the weekend')
-        api = IgAPI(IG_API_KEY, IG_ACCOUNT, IG_USER, IG_PASS)
+        api = IgClient(IG_API_KEY, IG_ACCOUNT, IG_USER, IG_PASS)
 
         epic = 'IX.D.DOW.IFD.IP'
 
