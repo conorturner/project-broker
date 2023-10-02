@@ -1,6 +1,6 @@
 
 run:
-	uvicorn app.main:app
+	uvicorn app.main:app --workers 2
 
 dev:
 	uvicorn app.main:app --reload

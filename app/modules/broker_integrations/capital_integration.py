@@ -47,6 +47,7 @@ def encrypt_password(password, key):
 
 class CapitalIntegration(BaseIntegration):
     """Class for the capital.com API integration."""
+
     def __init__(self, username, api_key, password, demo=False):
         """Initialise client object with credentials and live/dev endpoint."""
         self.username = username
@@ -152,7 +153,7 @@ class CapitalIntegration(BaseIntegration):
         final_data = await self.__confirmation(data["dealReference"])
         return final_data
 
-    async def close_position(self, deal_id, size, direction):
+    async def close_position(self, deal_id, size=1, direction='SELL'):
         """Close a position using the deal_id."""
         url = f"{self.server}/api/v1/positions/{deal_id}"
         data = await self.__auth_request("DELETE", url)

@@ -11,7 +11,7 @@ IG_USER = os.environ.get('IG_USER')
 IG_PASS = os.environ.get('IG_PASS')
 
 
-class MockResponse:
+class MockAsyncResponse:
     def __init__(self, text, status):
         self._text = text
         self.status = status
@@ -31,10 +31,12 @@ class MockResponse:
 
 class IGIntegrationTestCase(unittest.IsolatedAsyncioTestCase):
     async def test_make_request(self):
+        """Tests the generic __make_request function using dummy values."""
+
         api = IGIntegration(IG_API_KEY, IG_ACCOUNT, IG_USER, IG_PASS)
         mock_response = {'correct': 'response'}
         with mock.patch('aiohttp.ClientSession.request',
-                        return_value=MockResponse(mock_response, 200)) as mock_request:
+                        return_value=MockAsyncResponse(mock_response, 200)) as mock_request:
             with mock.patch('app.modules.broker_integrations.ig_integration.IGIntegration._IGIntegration__headers',
                             return_value={'example': 'header', 'dict': 1}) as mock_headers:
                 result = await api._IGIntegration__make_request(1, "GET", '/markets', params={'searchTerm': 'oil'})
@@ -42,9 +44,11 @@ class IGIntegrationTestCase(unittest.IsolatedAsyncioTestCase):
                 mock_request.assert_called_with('GET', 'https://demo-api.ig.com/gateway/deal/markets',
                                                 headers={'example': 'header', 'dict': 1}, params={'searchTerm': 'oil'})
                 mock_headers.assert_called_with(1)
-                self.assertEqual(result, mock_response)
+                self.assertEqual(result, mock_response)  # This assertion doesn't add much
 
     async def test_market_search(self):
+        """Tests the search_instruments function in the IG integration."""
+
         # This response was logged from the real API and represents a real response.
         mock_response = {'markets': [
             {'epic': 'IX.D.DOW.IFD.IP', 'instrumentName': 'Wall Street Cash ($10)', 'instrumentType': 'INDICES',
@@ -65,8 +69,6 @@ class IGIntegrationTestCase(unittest.IsolatedAsyncioTestCase):
             mock_make_request.assert_called_with(1, 'GET', '/markets', params={'searchTerm': 'wall street cash'})
 
     async def test_open_close_position(self):
-        # self.skipTest('No trades at the weekend')
-
         mock_open_response = {'dealReference': '6TJ656UG426TYQR'}
 
         mock_details_response = {'date': '2023-10-01T17:56:24.114', 'status': 'OPEN', 'reason': 'SUCCESS',
@@ -102,9 +104,9 @@ class IGIntegrationTestCase(unittest.IsolatedAsyncioTestCase):
                             return_value=mock_close_details_response) as mock_get_close_deal_details:
                 closed_position = await api.close_position(open_position['dealId'], 1, 'SELL')
 
-        # TODO: maybe some assertions
-        print(open_position)
-        print(closed_position)
+        # TODO: maybe some assertions on the return values
+        # print(open_position)
+        # print(closed_position)
         mock_open_make_request.assert_called_with(2, 'POST', '/positions/otc',
                                                   json={'direction': 'BUY', 'size': 1, 'orderType': 'MARKET',
                                                         'epic': 'IX.D.SUNNAS.IFS.IP', 'currencyCode': 'GBP',

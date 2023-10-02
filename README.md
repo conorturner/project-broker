@@ -7,4 +7,4 @@ Once running, automatically generated API documentation is available at localhos
 
 ## Contributing
 
-Changes will not be merged unless the pass the lint.
+Changes will not be merged unless they pass are linted and tested.
