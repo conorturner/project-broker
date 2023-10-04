@@ -11,6 +11,7 @@ CAPITAL_PASS = os.environ.get('CAPITAL_PASS')
 
 class CapitalTestCase(unittest.IsolatedAsyncioTestCase):
     async def test_all_accounts(self):
+        self.skipTest('needs mocks')
         # TODO: write a mock for this test
         client = CapitalIntegration(CAPITAL_USER, CAPITAL_API_KEY, CAPITAL_PASS, demo=True)
         account = await client.all_accounts()
@@ -19,6 +20,7 @@ class CapitalTestCase(unittest.IsolatedAsyncioTestCase):
 
     async def test_search_instruments(self):
         # TODO: write a mock for this test
+        self.skipTest('needs mocks')
 
         client = CapitalIntegration(CAPITAL_USER, CAPITAL_API_KEY, CAPITAL_PASS, demo=True)
         account = await client.search_instruments('crude')
@@ -29,6 +31,8 @@ class CapitalTestCase(unittest.IsolatedAsyncioTestCase):
         # TODO: write a mock for this test
         # TODO: make the test pass
         # TODO: use assertions in equivalent test for IG to write assertions here
+        self.skipTest('needs mocks')
+
         client = CapitalIntegration(CAPITAL_USER, CAPITAL_API_KEY, CAPITAL_PASS, demo=True)
 
         account = (await client.all_accounts())["accounts"]
