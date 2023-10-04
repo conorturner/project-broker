@@ -10,14 +10,6 @@ from app.modules.utils import by_one_worker
 
 from app.routers import position, history, stream
 
-
-async def test():
-    """This is just an example async function that can run in the background."""
-    while True:
-        await asyncio.sleep(1)
-        # print('working')
-
-
 tags_metadata = [
     {
         "name": "Positions",
