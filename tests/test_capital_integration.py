@@ -10,6 +10,13 @@ CAPITAL_PASS = os.environ.get('CAPITAL_PASS')
 
 
 class CapitalTestCase(unittest.IsolatedAsyncioTestCase):
+
+    async def test_stream(self):
+        client = CapitalIntegration(CAPITAL_USER, CAPITAL_API_KEY, CAPITAL_PASS, demo=True)
+        async for msg in client.stream(['OIL_CRUDE']):
+            print(msg)
+        # print(account)
+
     async def test_all_accounts(self):
         self.skipTest('needs mocks')
         # TODO: write a mock for this test

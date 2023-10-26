@@ -30,6 +30,16 @@ class MockAsyncResponse:
 
 
 class IGIntegrationTestCase(unittest.IsolatedAsyncioTestCase):
+
+    async def test_make_session(self):
+        api = IGIntegration(IG_API_KEY, IG_ACCOUNT, IG_USER, IG_PASS)
+        i = 0
+        async for item in api.stream(['CS.D.CRYPTOB10.CFD.IP'], parse_date=False):
+            print(item)
+            i += 1
+            if i > 5:
+                break
+
     async def test_make_request(self):
         """Tests the generic __make_request function using dummy values."""
 

@@ -1,7 +1,7 @@
 """
 Contains the integration classes and functions for the Capital.com API
 """
-
+import datetime
 import json
 import logging
 from base64 import b64encode, b64decode
@@ -176,3 +176,35 @@ class CapitalIntegration(BaseIntegration):
 
     async def get_positions(self):
         raise NotImplementedError()
+
+    async def stream(self, epics):
+        url = f'wss://api-streaming-capital.backend-capital.com/connect'
+        token, cst = await self.__token()
+
+        async with aiohttp.ClientSession() as session:
+            async with session.ws_connect(url) as ws:
+                await ws.send_json({
+                    "destination": "marketData.subscribe",
+                    "correlationId": 1,
+                    "cst": cst,
+                    "securityToken": token,
+                    "payload": {
+                        "epics": epics
+                    }
+                })
+
+                async for msg in ws:
+                    if msg.type in (aiohttp.WSMsgType.CLOSED, aiohttp.WSMsgType.ERROR):
+                        break
+
+                    # {'epic': 'CS.D.CRYPTOB10.CFD.IP', 'ask': 8589.22, 'bid': 8509.22, 't': '13:56:58'}
+                    payload = msg.json()['payload']
+                    if 'subscriptions' in payload:
+                        continue
+
+                    yield {
+                        'epic': payload['epic'],
+                        'ask': payload['ofr'],
+                        'bid': payload['bid'],
+                        't': datetime.datetime.fromtimestamp(payload['timestamp'] / 1000),
+                    }

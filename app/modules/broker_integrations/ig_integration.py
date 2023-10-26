@@ -9,6 +9,7 @@ from cachetools import TTLCache
 import pandas as pd
 
 from app.modules.broker_integrations.base_integration import BaseIntegration, NewPositionDetails
+from app.modules.broker_integrations.lightstreamer import async_adapter, LSClient, Subscription
 
 cache = TTLCache(maxsize=10, ttl=60)  # Time limited cache for access token
 store = {}  # Share token store across all instances of IgAPI
@@ -77,16 +78,7 @@ class IGIntegration(BaseIntegration):
 
         self.log = logging.getLogger('IgAPI')
 
-    async def __token(self):
-        """Getter for access token."""
-        if 'access_token' in cache:
-            return cache['access_token']
-        if 'refresh_token' in store:
-            token_response = await refresh_token(store['refresh_token'], self.api_key)
-            store['refresh_token'] = token_response['refresh_token']
-            cache['access_token'] = token_response['access_token']
-            return token_response['access_token']
-
+    async def create_session(self):
         url = "https://demo-api.ig.com/gateway/deal/session"
 
         payload = json.dumps({
@@ -101,7 +93,23 @@ class IGIntegration(BaseIntegration):
 
         async with aiohttp.ClientSession() as session:
             async with session.request("POST", url, headers=headers, data=payload) as resp:
-                resp = await resp.json()
+                return await resp.json()
+
+    async def get_session_tokens(self):
+        _, headers = await self.__make_request(1, 'GET', '/session?fetchSessionTokens=true', return_headers=True)
+        return headers['X-SECURITY-TOKEN'], headers['CST']
+
+    async def __token(self):
+        """Getter for access token."""
+        if 'access_token' in cache:
+            return cache['access_token']
+        if 'refresh_token' in store:
+            token_response = await refresh_token(store['refresh_token'], self.api_key)
+            store['refresh_token'] = token_response['refresh_token']
+            cache['access_token'] = token_response['access_token']
+            return token_response['access_token']
+
+        resp = await self.create_session()
 
         store['refresh_token'] = resp['oauthToken']['refresh_token']
         cache['access_token'] = resp['oauthToken']['access_token']
@@ -117,7 +125,7 @@ class IGIntegration(BaseIntegration):
             'Authorization': f'Bearer {await self.__token()}'
         }
 
-    async def __make_request(self, version, method, path, **kwargs):
+    async def __make_request(self, version, method, path, return_headers=False, **kwargs):
         """Wrapper method for making authenticated API requests."""
         headers = await self.__headers(version)
         if 'headers' in kwargs:
@@ -129,7 +137,10 @@ class IGIntegration(BaseIntegration):
                 if not 200 <= resp.status < 300:
                     raise IGAPIException(resp.status, await resp.text())
                 try:
-                    return await resp.json()
+                    if return_headers:
+                        return (await resp.json()), resp.headers
+                    else:
+                        return await resp.json()
                 except:
                     self.log.error(await resp.text())
                     raise
@@ -202,3 +213,37 @@ class IGIntegration(BaseIntegration):
     async def search_instruments(self, search_term):
         """Search market by keyword."""
         return await self.__make_request(1, "GET", '/markets', params={'searchTerm': search_term})
+
+    async def stream(self, epics):
+        stream_get, stream_put = async_adapter()
+
+        ig_session = await self.create_session()
+        token, cst = await self.get_session_tokens()
+        ls_password = "CST-%s|XST-%s" % (cst, token)
+        endpoint = ig_session['lightstreamerEndpoint']
+        ls_client = LSClient(endpoint, adapter_set="", password=ls_password)
+        ls_client.connect()
+
+        # Making a new Subscription in MERGE mode
+        subscription_prices = Subscription(
+            mode="MERGE",
+            items=[f"MARKET:{epic}" for epic in epics],  # sample CFD epics
+            fields=["BID", "OFFER", "UPDATE_TIME"],
+        )
+
+        # Adding the "on_price_update" function to Subscription
+        subscription_prices.addlistener(stream_put)
+        sub_key_prices = ls_client.subscribe(subscription_prices)
+
+        async for item in stream_get:
+            try:
+                hour, minutes, seconds = tuple(map(int, item['values']['UPDATE_TIME'].split(':')))
+                now = datetime.now().replace(hour=hour, minute=minutes, second=seconds, microsecond=0)
+                yield {
+                    'epic': item['name'].split(':')[1],
+                    'ask': float(item['values']['OFFER']),
+                    'bid': float(item['values']['BID']),
+                    't': now
+                }
+            except ValueError as e:
+                print('Error reading stream', e)
